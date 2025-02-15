@@ -58,9 +58,15 @@ fi
 sed -i "/addresses:/d" $netplan_file  # Elimina líneas de addresses si existen
 sed -i "/gateway4:/d" $netplan_file  # Elimina líneas de gateway4 si existen
 sed -i "/nameservers:/d" $netplan_file  # Elimina líneas de nameservers si existen
+sed -i "/dhcp4:/d" $netplan_file  # Elimina líneas de dhcp4 si existen
 
 # Añadir configuración de red
 cat <<EOF | tee -a $netplan_file > /dev/null
+network:
+  version: 2
+  ethernets:
+    eth0:
+      dhcp4: false
       addresses:
         - $server_ip/24
       gateway4: $router_ip
@@ -112,61 +118,50 @@ zone "$(echo $server_ip | awk -F. '{print $3"."$2"."$1}').in-addr.arpa" {
 };
 EOF
 
-# Editar archivo de zona para el dominio (sin borrar contenido existente)
-if [ ! -f /etc/bind/db.$domain_name ]; then
-    cp /etc/bind/db.local /etc/bind/db.$domain_name
-fi
-
-# Añadir registros DNS al archivo de zona
-cat <<EOF | tee /etc/bind/db.$domain_name > /dev/null
-\$TTL 604800
-@ IN SOA servidor.$domain_name. root.$domain_name. (
-    2 ; Serial
-    604800 ; Refresh
-    86400 ; Retry
-    2419200 ; Expire
-    604800 ) ; Negative Cache TTL
-
-@ IN NS servidor.$domain_name.
-servidor IN A $server_ip
-router IN A $router_ip
-server IN CNAME servidor
+# Crear archivo de zona para el dominio (db.redesplus.es)
+cat <<EOF > /etc/bind/db.$domain_name
+; BIND data file for local loopback interface
+;
+\$TTL    604800
+@       IN      SOA     servidor.$domain_name. root.$domain_name. (
+                              2         ; Serial
+                         604800         ; Refresh
+                          86400         ; Retry
+                        2419200         ; Expire
+                         604800 )       ; Negative Cache TTL
+;
+@       IN      NS      servidor.$domain_name.
+servidor IN      A       $server_ip
+clientel IN      A       ${client_ips[0]}
+router  IN      A       $router_ip
+cliente2.$domain_name. IN A ${client_ips[1]}
+server  IN      CNAME   servidor
 EOF
 
-for ((i=0; i<$num_clients; i++)); do
-    echo "${client_names[$i]} IN A ${client_ips[$i]}" >> /etc/bind/db.$domain_name
-done
-
-# Editar archivo de zona para resolución inversa (sin borrar contenido existente)
-reverse_zone_file="/etc/bind/db.$(echo $server_ip | awk -F. '{print $3"."$2"."$1}')"
-if [ ! -f $reverse_zone_file ]; then
-    cp /etc/bind/db.local $reverse_zone_file
-fi
-
-# Añadir registros PTR al archivo de zona inversa
-cat <<EOF | tee $reverse_zone_file > /dev/null
-\$TTL 604800
-@ IN SOA servidor.$domain_name. root.$domain_name. (
-    2 ; Serial
-    604800 ; Refresh
-    86400 ; Retry
-    2419200 ; Expire
-    604800 ) ; Negative Cache TTL
-
-@ IN NS servidor.$domain_name.
-$(echo $server_ip | awk -F. '{print $4}') IN PTR servidor.$domain_name.
-$(echo $router_ip | awk -F. '{print $4}') IN PTR router.$domain_name.
+# Crear archivo de zona para resolución inversa (db.222.168.192)
+cat <<EOF > /etc/bind/db.$(echo $server_ip | awk -F. '{print $3"."$2"."$1}')
+; BIND data file for local loopback interface
+;
+\$TTL    604800
+@       IN      SOA     servidor.$domain_name. root.$domain_name. (
+                              2         ; Serial
+                         604800         ; Refresh
+                          86400         ; Retry
+                        2419200         ; Expire
+                         604800 )       ; Negative Cache TTL
+;
+@       IN      NS      servidor.$domain_name.
+2       IN      PTR     servidor.$domain_name.
+51      IN      PTR     clientel.$domain_name.
+1       IN      PTR     router.$domain_name.
+52      IN      PTR     cliente2.$domain_name.
 EOF
-
-for ((i=0; i<$num_clients; i++)); do
-    echo "$(echo ${client_ips[$i]} | awk -F. '{print $4}') IN PTR ${client_names[$i]}.$domain_name." >> $reverse_zone_file
-done
 
 # 6. Verificación y reinicio del servicio DNS
 echo "Verificando configuración de BIND9..."
 named-checkconf /etc/bind/named.conf.local
 named-checkzone $domain_name /etc/bind/db.$domain_name
-named-checkzone $(echo $server_ip | awk -F. '{print $3"."$2"."$1}').in-addr.arpa $reverse_zone_file
+named-checkzone $(echo $server_ip | awk -F. '{print $3"."$2"."$1}').in-addr.arpa /etc/bind/db.$(echo $server_ip | awk -F. '{print $3"."$2"."$1}')
 
 echo "Reiniciando servicio BIND9..."
 systemctl restart bind9
