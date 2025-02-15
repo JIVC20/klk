@@ -67,6 +67,8 @@ cat <<EOF | tee -a $netplan_file > /dev/null
       nameservers:
         addresses:
           - $server_ip
+        search:
+          - $domain_name
 EOF
 
 netplan try
@@ -116,7 +118,7 @@ if [ ! -f /etc/bind/db.$domain_name ]; then
 fi
 
 # Añadir registros DNS al archivo de zona
-cat <<EOF | tee -a /etc/bind/db.$domain_name > /dev/null
+cat <<EOF | tee /etc/bind/db.$domain_name > /dev/null
 \$TTL 604800
 @ IN SOA servidor.$domain_name. root.$domain_name. (
     2 ; Serial
@@ -127,6 +129,8 @@ cat <<EOF | tee -a /etc/bind/db.$domain_name > /dev/null
 
 @ IN NS servidor.$domain_name.
 servidor IN A $server_ip
+router IN A $router_ip
+server IN CNAME servidor
 EOF
 
 for ((i=0; i<$num_clients; i++)); do
@@ -140,7 +144,7 @@ if [ ! -f $reverse_zone_file ]; then
 fi
 
 # Añadir registros PTR al archivo de zona inversa
-cat <<EOF | tee -a $reverse_zone_file > /dev/null
+cat <<EOF | tee $reverse_zone_file > /dev/null
 \$TTL 604800
 @ IN SOA servidor.$domain_name. root.$domain_name. (
     2 ; Serial
@@ -151,6 +155,7 @@ cat <<EOF | tee -a $reverse_zone_file > /dev/null
 
 @ IN NS servidor.$domain_name.
 $(echo $server_ip | awk -F. '{print $4}') IN PTR servidor.$domain_name.
+$(echo $router_ip | awk -F. '{print $4}') IN PTR router.$domain_name.
 EOF
 
 for ((i=0; i<$num_clients; i++)); do
@@ -171,5 +176,6 @@ systemctl status bind9
 echo "Realizando pruebas de resolución DNS..."
 nslookup servidor.$domain_name
 nslookup $server_ip
+nslookup router.$domain_name
 
 echo "¡Configuración del servidor DNS completada!"
