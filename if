@@ -130,12 +130,12 @@ cat <<EOF > /etc/bind/db.$domain_name
                         2419200         ; Expire
                          604800 )       ; Negative Cache TTL
 ;
-@       IN      NS      servidor.$domain_name.
-servidor IN      A       $server_ip
-clientel IN      A       ${client_ips[0]}
-router  IN      A       $router_ip
-cliente2.$domain_name. IN A ${client_ips[1]}
-server  IN      CNAME   servidor
+@                         IN      NS      servidor.$domain_name.
+servidor                  IN      A       $server_ip
+clientel                  IN      A       ${client_ips[0]}
+router                    IN      A       $router_ip
+cliente2.$domain_name.    IN      A       ${client_ips[1]}
+server                    IN      CNAME   servidor
 EOF
 
 # Crear archivo de zona para resolución inversa (db.222.168.192)
